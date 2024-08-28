@@ -2,7 +2,6 @@
 
 [![Go Doc](https://pkg.go.dev/badge/github.com/runZeroInc/mustache)](https://pkg.go.dev/github.com/runZeroInc/mustache)
 [![Go Report Card](https://goreportcard.com/badge/github.com/runZeroInc/mustache)](https://goreportcard.com/report/github.com/runZeroInc/mustache)
-[![Build Status](https://img.shields.io/travis/runZeroInc/mustache.svg)](https://travis-ci.com/github/runZeroInc/mustache/settings)
 [![codecov](https://codecov.io/gh/runZeroInc/mustache/branch/main/graph/badge.svg?token=S4xOabgqR8)](https://codecov.io/gh/runZeroInc/mustache)
 
 <img src="images/logo.jpeg" alt="logo" width="100"/>
