@@ -34,7 +34,7 @@ var disabledTests = map[string]map[string]struct{}{
 
 type specTest struct {
 	Name        string            `json:"name"`
-	Data        interface{}       `json:"data"`
+	Data        any               `json:"data"`
 	Expected    string            `json:"expected"`
 	Template    string            `json:"template"`
 	Description string            `json:"desc"`
@@ -106,7 +106,7 @@ func runTest(t *testing.T, file string, test *specTest) {
 
 	if file == "~lambdas.json" {
 		lambda := lambdas[test.Name]
-		((test.Data.(map[string]interface{}))["lambda"]) = lambda
+		(test.Data.(map[string]any))["lambda"] = lambda
 	}
 	var out string
 	var oerr error

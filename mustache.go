@@ -2,6 +2,7 @@ package mustache
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"html/template"
 	"io"
@@ -48,7 +49,7 @@ func (r *Compiler) WithErrors(b bool) *Compiler {
 
 // CompileString compiles a Mustache template from a string.
 func (r *Compiler) CompileString(data string) (*Template, error) {
-	tmpl := Template{data, "{{", "}}", 0, 1, []interface{}{}, false, r.partial, r.outputMode, r.errorOnMissing, r}
+	tmpl := Template{data, "{{", "}}", 0, 1, []any{}, false, r.partial, r.outputMode, r.errorOnMissing, r}
 	err := tmpl.parse()
 	if err != nil {
 		return nil, err
@@ -78,8 +79,8 @@ const (
 	Partial
 )
 
-// Skip all whitespaces apeared after these types of tags until end of line
-// if the line only contains a tag and whitespaces.
+// SkipWhitespaceTagTypes lists the types of tag that will cause all whitespace
+// until EOL to be skipped, if the line only contains a tag and whitespace.
 const (
 	SkipWhitespaceTagTypes = "#^/<>=!"
 )
@@ -128,7 +129,7 @@ type sectionElement struct {
 	name      string
 	inverted  bool
 	startline int
-	elems     []interface{}
+	elems     []any
 }
 
 type partialElement struct {
@@ -156,7 +157,7 @@ type Template struct {
 	ctag           string
 	p              int
 	curline        int
-	elems          []interface{}
+	elems          []any
 	forceRaw       bool
 	partial        PartialProvider
 	outputMode     EscapeMode
@@ -174,7 +175,7 @@ func (tmpl *Template) Tags() []Tag {
 	return extractTags(tmpl.elems)
 }
 
-func extractTags(elems []interface{}) []Tag {
+func extractTags(elems []any) []Tag {
 	tags := make([]Tag, 0, len(elems))
 	for _, elem := range elems {
 		switch elem := elem.(type) {
@@ -410,7 +411,7 @@ func (tmpl *Template) parseSection(section *sectionElement) error {
 			break
 		case '#', '^':
 			name := strings.TrimSpace(tag[1:])
-			se := sectionElement{name, tag[0] == '^', tmpl.curline, []interface{}{}}
+			se := sectionElement{name, tag[0] == '^', tmpl.curline, []any{}}
 			err := tmpl.parseSection(&se)
 			if err != nil {
 				return err
@@ -486,7 +487,7 @@ func (tmpl *Template) parse() error {
 			break
 		case '#', '^':
 			name := strings.TrimSpace(tag[1:])
-			se := sectionElement{name, tag[0] == '^', tmpl.curline, []interface{}{}}
+			se := sectionElement{name, tag[0] == '^', tmpl.curline, []any{}}
 			err := tmpl.parseSection(&se)
 			if err != nil {
 				return err
@@ -528,7 +529,7 @@ func (tmpl *Template) parse() error {
 
 // Evaluate interfaces and pointers looking for a value that can look up the name, via a
 // struct field, method, or map key, and return the result of the lookup.
-func lookup(contextChain []interface{}, name string, errorOnMissing bool) (reflect.Value, error) {
+func lookup(contextChain []any, name string, errorOnMissing bool) (reflect.Value, error) {
 	// dot notation
 	if name != "." && strings.Contains(name, ".") {
 		parts := strings.SplitN(name, ".", 2)
@@ -537,7 +538,7 @@ func lookup(contextChain []interface{}, name string, errorOnMissing bool) (refle
 		if err != nil {
 			return v, err
 		}
-		return lookup([]interface{}{v}, parts[1], errorOnMissing)
+		return lookup([]any{v}, parts[1], errorOnMissing)
 	}
 
 	defer func() {
@@ -625,13 +626,13 @@ loop:
 	return v
 }
 
-func (tmpl *Template) renderSection(section *sectionElement, contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderSection(section *sectionElement, contextChain []any, buf io.Writer) error {
 	value, err := lookup(contextChain, section.name, tmpl.errorOnMissing)
 	if err != nil {
 		return err
 	}
 	context := contextChain[0].(reflect.Value)
-	contexts := []interface{}{}
+	var contexts []any
 	// if the value is nil, check if it's an inverted section
 	isEmpty := isEmpty(value)
 	if isEmpty && !section.inverted || !isEmpty && section.inverted {
@@ -666,11 +667,11 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 			}
 			in := []reflect.Value{reflect.ValueOf(text.String()), reflect.ValueOf(render)}
 			res := val.Call(in)
-			res_str := res[0].String()
+			resStr := res[0].String()
 			if !res[1].IsNil() {
 				return res[1].Interface().(error)
 			}
-			fmt.Fprintf(buf, "%s", res_str)
+			fmt.Fprintf(buf, "%s", resStr)
 			return nil
 		default:
 			// Spec: Non-false sections have their value at the top of context,
@@ -682,7 +683,7 @@ func (tmpl *Template) renderSection(section *sectionElement, contextChain []inte
 		contexts = append(contexts, context)
 	}
 
-	chain2 := make([]interface{}, len(contextChain)+1)
+	chain2 := make([]any, len(contextChain)+1)
 	copy(chain2[1:], contextChain)
 	// by default we execute the section
 	for _, ctx := range contexts {
@@ -730,13 +731,13 @@ func JSONEscape(dest io.Writer, data string) error {
 	return nil
 }
 
-func getSectionText(elements []interface{}, buf io.Writer) {
+func getSectionText(elements []any, buf io.Writer) {
 	for _, element := range elements {
 		getElementText(element, buf)
 	}
 }
 
-func getElementText(element interface{}, buf io.Writer) {
+func getElementText(element any, buf io.Writer) {
 	switch elem := element.(type) {
 	case *textElement:
 		fmt.Fprintf(buf, "%s", elem.text)
@@ -757,7 +758,7 @@ func getElementText(element interface{}, buf io.Writer) {
 	}
 }
 
-func (tmpl *Template) renderElement(element interface{}, contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderElement(element any, contextChain []any, buf io.Writer) error {
 	switch elem := element.(type) {
 	case *textElement:
 		_, err := buf.Write(elem.text)
@@ -780,6 +781,16 @@ func (tmpl *Template) renderElement(element interface{}, contextChain []interfac
 				s := fmt.Sprint(val.Interface())
 				switch tmpl.outputMode {
 				case EscapeJSON:
+					// Output arrays and objects in JSON format, if in JSON mode
+					kind := reflect.TypeOf(val.Interface()).Kind()
+					if kind == reflect.Slice || kind == reflect.Array || kind == reflect.Map {
+						marshalledJson, err := json.Marshal(val.Interface())
+						if err != nil {
+							return err
+						}
+						buf.Write(marshalledJson)
+						break
+					}
 					if err = JSONEscape(buf, s); err != nil {
 						return err
 					}
@@ -811,7 +822,7 @@ func (tmpl *Template) renderElement(element interface{}, contextChain []interfac
 	return nil
 }
 
-func (tmpl *Template) renderTemplate(contextChain []interface{}, buf io.Writer) error {
+func (tmpl *Template) renderTemplate(contextChain []any, buf io.Writer) error {
 	for _, elem := range tmpl.elems {
 		if err := tmpl.renderElement(elem, contextChain, buf); err != nil {
 			return err
@@ -822,8 +833,8 @@ func (tmpl *Template) renderTemplate(contextChain []interface{}, buf io.Writer) 
 
 // Frender uses the given data source - generally a map or struct - to
 // render the compiled template to an io.Writer.
-func (tmpl *Template) Frender(out io.Writer, context ...interface{}) error {
-	var contextChain []interface{}
+func (tmpl *Template) Frender(out io.Writer, context ...any) error {
+	var contextChain []any
 	for _, c := range context {
 		val := reflect.ValueOf(c)
 		contextChain = append(contextChain, val)
@@ -833,7 +844,7 @@ func (tmpl *Template) Frender(out io.Writer, context ...interface{}) error {
 
 // Render uses the given data source - generally a map or struct - to render
 // the compiled template and return the output.
-func (tmpl *Template) Render(context ...interface{}) (string, error) {
+func (tmpl *Template) Render(context ...any) (string, error) {
 	var buf bytes.Buffer
 	err := tmpl.Frender(&buf, context...)
 	return buf.String(), err
@@ -842,7 +853,7 @@ func (tmpl *Template) Render(context ...interface{}) (string, error) {
 // RenderInLayout uses the given data source - generally a map or struct - to
 // render the compiled template and layout "wrapper" template and return the
 // output.
-func (tmpl *Template) RenderInLayout(layout *Template, context ...interface{}) (string, error) {
+func (tmpl *Template) RenderInLayout(layout *Template, context ...any) (string, error) {
 	var buf bytes.Buffer
 	err := tmpl.FRenderInLayout(&buf, layout, context...)
 	if err != nil {
@@ -854,12 +865,12 @@ func (tmpl *Template) RenderInLayout(layout *Template, context ...interface{}) (
 // FRenderInLayout uses the given data source - generally a map or
 // struct - to render the compiled templated a loayout "wrapper"
 // template to an io.Writer.
-func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context ...interface{}) error {
+func (tmpl *Template) FRenderInLayout(out io.Writer, layout *Template, context ...any) error {
 	content, err := tmpl.Render(context...)
 	if err != nil {
 		return err
 	}
-	allContext := make([]interface{}, len(context)+1)
+	allContext := make([]any, len(context)+1)
 	copy(allContext[1:], context)
 	allContext[0] = map[string]string{"content": content}
 	return layout.Frender(out, allContext...)

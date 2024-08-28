@@ -99,7 +99,7 @@ tmpl1, err := cmpl.CompileString("This is {{mustache}}")
 tmpl2, err := cmpl.CompileFile("main.mustache")
 ```
 
-Finally, you can render the compiled templates using any number of contextual data objects, generally expected to be `map[string]interface{}` or a `struct`:
+Finally, you can render the compiled templates using any number of contextual data objects, generally expected to be `map[string]any` or a `struct`:
 
 ```go
 output, err := tmpl1.Render(map[string]string{"mustache":"awesome!"})
@@ -138,7 +138,7 @@ To use raw characters, use three curly brackets `{{{var}}}`.
 This implementation of Mustache also allows you to run the engine in JSON mode, in which case the standard JSON quoting
 rules are used. To do this, use `.WithEscapeMode(mustache.JSON)` to set the escape mode on the compiler. Note that the
 JSON escaping rules are different from the rules used by Go's text/template.JSEscape, and do not guarantee that the JSON
-will be safe to include as part of an HTML page.
+will be safe to include as part of an HTML page. In JSON mode, references to objects and slices in the template will be rendered to JSON objects and arrays.
 
 A third mode of `mustache.Raw` allows the use of Mustache templates to generate plain text, such as e-mail messages and
 console application help text.
@@ -151,7 +151,7 @@ It is a common pattern to include a template file as a "wrapper" for other templ
 and a footer, for instance. Mustache.go supports this pattern with the following method:
 
 ```go
-(contentTemplate *Template) RenderInLayout(layoutTemplate *Template, context ...interface{}) (string, error)
+(contentTemplate *Template) RenderInLayout(layoutTemplate *Template, context ...any) (string, error)
 ```
 
 The layout must have a variable called `{{content}}`. For example, given the following files:

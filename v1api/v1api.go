@@ -1,4 +1,4 @@
-// This package is a best-effort attempt to implement the old v1 API using the
+// Package v1api is a best-effort attempt to implement the old v1 API using the
 // new v2 API.
 package v1api
 

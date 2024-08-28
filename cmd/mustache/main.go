@@ -45,7 +45,7 @@ func run(cmd *cobra.Command, args []string) error {
 		return cmd.Usage()
 	}
 
-	var data interface{}
+	var data any
 	var templatePath string
 	if len(args) == 1 {
 		var err error
@@ -68,8 +68,8 @@ func run(cmd *cobra.Command, args []string) error {
 		if err != nil {
 			return err
 		}
-		for k, v := range override.(map[interface{}]interface{}) {
-			data.(map[interface{}]interface{})[k] = v
+		for k, v := range override.(map[any]any) {
+			data.(map[any]any)[k] = v
 		}
 	}
 	var output string
@@ -98,24 +98,24 @@ func run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func parseDataFromStdIn() (interface{}, error) {
+func parseDataFromStdIn() (any, error) {
 	b, err := io.ReadAll(os.Stdin)
 	if err != nil {
 		return nil, err
 	}
-	var data interface{}
+	var data any
 	if err := yaml.Unmarshal(b, &data); err != nil {
 		return nil, err
 	}
 	return data, nil
 }
 
-func parseDataFromFile(filePath string) (interface{}, error) {
+func parseDataFromFile(filePath string) (any, error) {
 	b, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, err
 	}
-	var data interface{}
+	var data any
 	if err := yaml.Unmarshal(b, &data); err != nil {
 		return nil, err
 	}
