@@ -13,8 +13,8 @@ jobs:
       with:
         go-version: ${{ matrix.go-version }}
     - name: Checkout code
-      uses: actions/checkout@v2
-    - name: Submodule init
-      uses: snickerbockers/submodules-init@v4
+      uses: actions/checkout@v4.1.7
+      with:
+        submodules: recursive
     - name: Test
       run: go test ./...
