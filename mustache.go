@@ -819,7 +819,10 @@ func (tmpl *Template) renderElement(element any, contextChain []any, buf io.Writ
 						if err != nil {
 							return err
 						}
-						buf.Write(marshalledJson)
+						_, err = buf.Write(marshalledJson)
+						if err != nil {
+							return err
+						}
 						break
 					}
 					if err = JSONEscape(buf, s); err != nil {
