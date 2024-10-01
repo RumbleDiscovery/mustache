@@ -529,8 +529,8 @@ func TestRenderJSON(t *testing.T) {
 func TestJSONCustomMarshal(t *testing.T) {
 	var customMarshaler JSONMarshalFn = func(dest io.Writer, data any) error {
 		if ia, ok := data.([]string); ok {
-			dest.Write([]byte(strings.Join(ia, "-")))
-			return nil
+			_, err := dest.Write([]byte(strings.Join(ia, "-")))
+			return err
 		}
 		return JSONMarshal(dest, data)
 	}
