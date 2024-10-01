@@ -101,11 +101,11 @@ func run(cmd *cobra.Command, args []string) error {
 func parseDataFromStdIn() (any, error) {
 	b, err := io.ReadAll(os.Stdin)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
 	var data any
 	if err := yaml.Unmarshal(b, &data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal data: %w", err)
 	}
 	return data, nil
 }
@@ -113,11 +113,11 @@ func parseDataFromStdIn() (any, error) {
 func parseDataFromFile(filePath string) (any, error) {
 	b, err := os.ReadFile(filePath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to read data: %w", err)
 	}
 	var data any
 	if err := yaml.Unmarshal(b, &data); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to unmarshal data: %w", err)
 	}
 	return data, nil
 }

@@ -13,15 +13,40 @@ import (
 	"unicode"
 )
 
-// RenderFn is the signature of a function which can be called from a lambda section
+// sentinelError is an error type for constant sentinel errors.
+type sentinelError string
+
+// Error implements the error interface.
+func (e sentinelError) Error() string { return string(e) }
+
+// ErrMissingVar indicates that a variable was referred to, but its value could not be resolved.
+const ErrMissingVar = sentinelError("missing variable")
+
+// ErrUnsafePartialName indicates that a partial had a name that was unsafe for use with file-based templates.
+const ErrUnsafePartialName = sentinelError("unsafe partial name")
+
+// ErrPartialNotFound indicates that a partial's definition could not be located.
+const ErrPartialNotFound = sentinelError("partial not found")
+
+// ErrNoPartialProvider indicates that a partial was referred to, but no partial provider had been set up.
+const ErrNoPartialProvider = sentinelError("no partial provider")
+
+// RenderFn is the signature of a function which can be called from a lambda section.
 type RenderFn func(text string) (string, error)
 
+// Compiler represents the overall object used to compile Mustache templates.
 type Compiler struct {
-	partial        PartialProvider
-	outputMode     EscapeMode
-	errorOnMissing bool
+	partial             PartialProvider
+	outputMode          EscapeMode
+	errorOnMissing      bool
+	customJSONMarshaler JSONMarshalFn
 }
 
+// JSONMarshalFn is the signature of a function which can marshal a value to JSON and
+// write it to the supplied Writer.
+type JSONMarshalFn func(dest io.Writer, data any) error
+
+// New returns a new instance of the Mustache template compiler.
 func New() *Compiler {
 	return &Compiler{}
 }
@@ -47,9 +72,20 @@ func (r *Compiler) WithErrors(b bool) *Compiler {
 	return r
 }
 
+// WithJSONMarshalFn adds a custom function to control how values are marshaled to JSON.
+// The function is passed a Writer and a value, and is expected to write the marshaled
+// value to the Writer. The function is expected to handle any escaping necessary.
+// The default behavior with no custom marshal function is to call JSONMarshal, which
+// in turn calls JSONEscape. Setting the custom marshal function to nil (the default)
+// disables the feature and goes back to default behavior.
+func (r *Compiler) WithJSONMarshalFn(m JSONMarshalFn) *Compiler {
+	r.customJSONMarshaler = m
+	return r
+}
+
 // CompileString compiles a Mustache template from a string.
 func (r *Compiler) CompileString(data string) (*Template, error) {
-	tmpl := Template{data, "{{", "}}", 0, 1, []any{}, false, r.partial, r.outputMode, r.errorOnMissing, r}
+	tmpl := Template{data, "{{", "}}", 0, 1, []any{}, false, r.partial, r.outputMode, r.errorOnMissing, r.customJSONMarshaler, r}
 	err := tmpl.parse()
 	if err != nil {
 		return nil, err
@@ -61,7 +97,7 @@ func (r *Compiler) CompileString(data string) (*Template, error) {
 func (r *Compiler) CompileFile(filename string) (*Template, error) {
 	data, err := os.ReadFile(filename)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("can't read template file: %w", err)
 	}
 	return r.CompileString(string(data))
 }
@@ -152,17 +188,18 @@ const (
 
 // Template represents a compiled mustache template which can be used to render data.
 type Template struct {
-	data           string
-	otag           string
-	ctag           string
-	p              int
-	curline        int
-	elems          []any
-	forceRaw       bool
-	partial        PartialProvider
-	outputMode     EscapeMode
-	errorOnMissing bool
-	parent         *Compiler
+	data                string
+	otag                string
+	ctag                string
+	p                   int
+	curline             int
+	elems               []any
+	forceRaw            bool
+	partial             PartialProvider
+	outputMode          EscapeMode
+	errorOnMissing      bool
+	customJSONMarshaler JSONMarshalFn
+	parent              *Compiler
 }
 
 type parseError struct {
@@ -349,18 +386,19 @@ func (tmpl *Template) readTag(mayStandalone bool) (*tagReadingResult, error) {
 		if !strings.Contains(SkipWhitespaceTagTypes, tag[0:1]) {
 			standalone = false
 		} else {
-			if eow == len(tmpl.data) {
+			switch {
+			case eow == len(tmpl.data):
 				standalone = true
 				tmpl.p = eow
-			} else if eow < len(tmpl.data) && tmpl.data[eow] == '\n' {
+			case eow < len(tmpl.data) && tmpl.data[eow] == '\n':
 				standalone = true
 				tmpl.p = eow + 1
 				tmpl.curline++
-			} else if eow+1 < len(tmpl.data) && tmpl.data[eow] == '\r' && tmpl.data[eow+1] == '\n' {
+			case eow+1 < len(tmpl.data) && tmpl.data[eow] == '\r' && tmpl.data[eow+1] == '\n':
 				standalone = true
 				tmpl.p = eow + 2
 				tmpl.curline++
-			} else {
+			default:
 				standalone = false
 			}
 		}
@@ -372,6 +410,7 @@ func (tmpl *Template) readTag(mayStandalone bool) (*tagReadingResult, error) {
 	}, nil
 }
 
+//nolint:unparam
 func (tmpl *Template) parsePartial(name, indent string) (*partialElement, error) {
 	return &partialElement{
 		name:   name,
@@ -589,7 +628,7 @@ Outer:
 	if !errorOnMissing {
 		return reflect.Value{}, nil
 	}
-	return reflect.Value{}, fmt.Errorf("missing variable %q", name)
+	return reflect.Value{}, fmt.Errorf("can't resolve %s: %w", name, ErrMissingVar)
 }
 
 func isEmpty(v reflect.Value) bool {
@@ -725,7 +764,7 @@ func JSONEscape(dest io.Writer, data string) error {
 			}
 		}
 		if err != nil {
-			return err
+			return fmt.Errorf("error escaping JSON: %w", err)
 		}
 	}
 	return nil
@@ -775,28 +814,26 @@ func (tmpl *Template) renderElement(element any, contextChain []any, buf io.Writ
 		}
 
 		if val.IsValid() {
+			value := val.Interface()
 			if elem.raw {
-				fmt.Fprint(buf, val.Interface())
+				fmt.Fprint(buf, value)
 			} else {
-				s := fmt.Sprint(val.Interface())
 				switch tmpl.outputMode {
 				case EscapeJSON:
-					// Output arrays and objects in JSON format, if in JSON mode
-					kind := reflect.TypeOf(val.Interface()).Kind()
-					if kind == reflect.Slice || kind == reflect.Array || kind == reflect.Map {
-						marshalledJson, err := json.Marshal(val.Interface())
-						if err != nil {
+					if tmpl.customJSONMarshaler != nil {
+						if err := tmpl.customJSONMarshaler(buf, value); err != nil {
 							return err
 						}
-						buf.Write(marshalledJson)
-						break
-					}
-					if err = JSONEscape(buf, s); err != nil {
-						return err
+					} else {
+						if err := JSONMarshal(buf, value); err != nil {
+							return err
+						}
 					}
 				case EscapeHTML:
+					s := fmt.Sprint(val.Interface())
 					template.HTMLEscape(buf, []byte(s))
 				case Raw:
+					s := fmt.Sprint(val.Interface())
 					if _, err = buf.Write([]byte(s)); err != nil {
 						return err
 					}
@@ -820,6 +857,23 @@ func (tmpl *Template) renderElement(element any, contextChain []any, buf io.Writ
 		}
 	}
 	return nil
+}
+
+// JSONMarshal is the default function for marshaling data into the template output
+// when running in JSON mode.
+func JSONMarshal(dest io.Writer, value any) error {
+	// Output arrays, slices and maps in JSON format
+	kind := reflect.TypeOf(value).Kind()
+	if kind == reflect.Slice || kind == reflect.Array || kind == reflect.Map {
+		marshalledJson, err := json.Marshal(value)
+		if err != nil {
+			return fmt.Errorf("error marshaling %T: %w", value, err)
+		}
+		_, err = dest.Write(marshalledJson)
+		return err
+	}
+	s := fmt.Sprint(value)
+	return JSONEscape(dest, s)
 }
 
 func (tmpl *Template) renderTemplate(contextChain []any, buf io.Writer) error {
