@@ -1,7 +1,6 @@
 package mustache
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -40,7 +39,7 @@ func (fp *FileProvider) Get(name string) (string, error) {
 		cname = strings.ReplaceAll(filepath.Clean(cname), "\\", "/")
 		cname = strings.TrimLeft(cname, "/")
 		if cname != name || cname == "" {
-			return "", fmt.Errorf("unsafe partial name passed to FileProvider: %s", name)
+			return "", fmt.Errorf("can't use %s: %w", name, ErrUnsafePartialName) //nolint:all
 		}
 		clean = cname
 	}
@@ -72,13 +71,13 @@ func (fp *FileProvider) Get(name string) (string, error) {
 	}
 
 	if f == nil {
-		return "", fmt.Errorf("%s: partial not found", name) // nil
+		return "", fmt.Errorf("%s: %w", name, ErrPartialNotFound)
 	}
 	defer f.Close()
 
 	data, err := io.ReadAll(f)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("error reading partial %s: %w", name, err)
 	}
 
 	return string(data), nil
@@ -107,7 +106,7 @@ var _ PartialProvider = (*StaticProvider)(nil)
 
 func (tmpl *Template) getPartials(partials PartialProvider, name, indent string) (*Template, error) {
 	if partials == nil {
-		return nil, errors.New("no partial provider specified")
+		return nil, ErrNoPartialProvider
 	}
 	data, err := partials.Get(name)
 	if err != nil {
@@ -118,5 +117,5 @@ func (tmpl *Template) getPartials(partials PartialProvider, name, indent string)
 	r := regexp.MustCompile(`(?m:^(.+)$)`)
 	data = r.ReplaceAllString(data, indent+"$1")
 
-	return tmpl.parent.CompileString(data) //, partials)
+	return tmpl.parent.CompileString(data)
 }

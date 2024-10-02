@@ -2,12 +2,16 @@ package mustache
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"strings"
 	"testing"
 )
+
+const TestString = "hello world"
 
 type Test struct {
 	tmpl     string
@@ -91,15 +95,15 @@ func TestTagType(t *testing.T) {
 
 var tests = []Test{
 	{`{{/}}`, nil, "", parseError{line: 1, message: "unmatched close tag"}},
-	{`hello world`, nil, "hello world", nil},
-	{`hello {{name}}`, map[string]string{"name": "world"}, "hello world", nil},
+	{`hello world`, nil, TestString, nil},
+	{`hello {{name}}`, map[string]string{"name": "world"}, TestString, nil},
 	{`{{var}}`, map[string]string{"var": "5 > 2"}, "5 &gt; 2", nil},
 	{`{{{var}}}`, map[string]string{"var": "5 > 2"}, "5 > 2", nil},
 	{`{{var}}`, map[string]string{"var": "& \" < >"}, "&amp; &#34; &lt; &gt;", nil},
 	{`{{{var}}}`, map[string]string{"var": "& \" < >"}, "& \" < >", nil},
 	{`{{a}}{{b}}{{c}}{{d}}`, map[string]string{"a": "a", "b": "b", "c": "c", "d": "d"}, "abcd", nil},
 	{`0{{a}}1{{b}}23{{c}}456{{d}}89`, map[string]string{"a": "a", "b": "b", "c": "c", "d": "d"}, "0a1b23c456d89", nil},
-	{`hello {{! comment }}world`, map[string]string{}, "hello world", nil},
+	{`hello {{! comment }}world`, map[string]string{}, TestString, nil},
 	{`{{ a }}{{=<% %>=}}<%b %><%={{ }}=%>{{ c }}`, map[string]string{"a": "a", "b": "b", "c": "c"}, "abc", nil},
 	{`{{ a }}{{= <% %> =}}<%b %><%= {{ }}=%>{{c}}`, map[string]string{"a": "a", "b": "b", "c": "c"}, "abc", nil},
 
@@ -188,9 +192,9 @@ var tests = []Test{
 	{`{{#user}}{{#Func6}}{{#Allow}}abcd{{/Allow}}{{/Func6}}{{/user}}`, map[string]any{"user": &User{"Mike", 1}}, "abcd", nil},
 
 	// context chaining
-	{`hello {{#section}}{{name}}{{/section}}`, map[string]any{"section": map[string]string{"name": "world"}}, "hello world", nil},
-	{`hello {{#section}}{{name}}{{/section}}`, map[string]any{"name": "bob", "section": map[string]string{"name": "world"}}, "hello world", nil},
-	{`hello {{#bool}}{{#section}}{{name}}{{/section}}{{/bool}}`, map[string]any{"bool": true, "section": map[string]string{"name": "world"}}, "hello world", nil},
+	{`hello {{#section}}{{name}}{{/section}}`, map[string]any{"section": map[string]string{"name": "world"}}, TestString, nil},
+	{`hello {{#section}}{{name}}{{/section}}`, map[string]any{"name": "bob", "section": map[string]string{"name": "world"}}, TestString, nil},
+	{`hello {{#bool}}{{#section}}{{name}}{{/section}}{{/bool}}`, map[string]any{"bool": true, "section": map[string]string{"name": "world"}}, TestString, nil},
 	{`{{#users}}{{canvas}}{{/users}}`, map[string]any{"canvas": "hello", "users": []User{{"Mike", 1}}}, "hello", nil},
 	{`{{#categories}}{{DisplayName}}{{/categories}}`, map[string][]*Category{
 		"categories": {&Category{"a", "b"}},
@@ -235,7 +239,7 @@ func TestBasic(t *testing.T) {
 		if err == nil && tm != nil {
 			output, err = tm.Render(test.tmpl, test.context)
 		}
-		if err != test.err {
+		if !errors.Is(err, test.err) {
 			t.Errorf("%q expected %q but got error %v", test.tmpl, test.expected, err)
 		} else if output != test.expected {
 			t.Errorf("%q expected %q got %q", test.tmpl, test.expected, output)
@@ -303,7 +307,7 @@ func TestMissing(t *testing.T) {
 
 func TestFile(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test1.mustache")
-	expected := "hello world"
+	expected := TestString
 	cmpl, err := New().CompileFile(filename)
 	if err != nil {
 		t.Error(err)
@@ -318,7 +322,7 @@ func TestFile(t *testing.T) {
 
 func TestFRender(t *testing.T) {
 	filename := path.Join(path.Join(os.Getenv("PWD"), "tests"), "test1.mustache")
-	expected := "hello world"
+	expected := TestString
 	tmpl, err := New().CompileFile(filename)
 	if err != nil {
 		t.Fatal(err)
@@ -341,7 +345,7 @@ func TestPartial(t *testing.T) {
 	}
 	testdir := path.Join(cwd, "tests")
 	filename := path.Join(testdir, "test2.mustache")
-	expected := "hello world"
+	expected := TestString
 	tmpl, err := New().WithErrors(true).
 		WithPartials(&FileProvider{Paths: []string{testdir}, Extensions: []string{".mustache"}}).
 		CompileFile(filename)
@@ -522,7 +526,68 @@ func TestRenderJSON(t *testing.T) {
 	}
 }
 
-// Make sure bugs caught by fuzz testing don't creep back in
+func TestJSONCustomMarshal(t *testing.T) {
+	var customMarshaler JSONMarshalFn = func(dest io.Writer, data any) error {
+		if ia, ok := data.([]string); ok {
+			_, err := dest.Write([]byte(strings.Join(ia, "-")))
+			return err
+		}
+		return JSONMarshal(dest, data)
+	}
+	data := map[string]any{
+		"a": []string{"one", "two", "three"},
+		"b": []int{1, 2, 3},
+	}
+	tmpl, err := New().WithEscapeMode(EscapeJSON).WithJSONMarshalFn(customMarshaler).CompileString(`{{a}} {{b}}`)
+	if err != nil {
+		t.Error(err)
+	}
+	got, err := tmpl.Render(data)
+	if err != nil {
+		t.Error(err)
+	}
+	want := `one-two-three [1,2,3]`
+	if got != want {
+		t.Errorf("got %s expected %s", got, want)
+	}
+}
+
+func TestJSONMarshal(t *testing.T) {
+	tests := []struct {
+		Input  any
+		Output string
+	}{
+		{
+			Input:  []int{1, 2, 3},
+			Output: `[1,2,3]`,
+		},
+		{
+			Input:  map[string]any{"a": "alpha", "b": "beta", "x": 12, "y": 9.4},
+			Output: `{"a":"alpha","b":"beta","x":12,"y":9.4}`,
+		},
+		{
+			Input:  3,
+			Output: "3",
+		},
+		{
+			Input:  "Tuesday",
+			Output: "Tuesday",
+		},
+	}
+	for _, tst := range tests {
+		var buf bytes.Buffer
+		err := JSONMarshal(&buf, tst.Input)
+		if err != nil {
+			t.Error(err)
+		}
+		got := buf.String()
+		if got != tst.Output {
+			t.Errorf("got %s expected %s", got, tst.Output)
+		}
+	}
+}
+
+// Make sure bugs caught by fuzz testing don't creep back in.
 func TestCrashers(t *testing.T) {
 	crashers := []string{
 		`{{#}}{{#}}{{#}}{{#}}{{#}}{{=}}`,
@@ -565,8 +630,8 @@ func TestMultiContext(t *testing.T) {
 	if err != nil {
 		t.Error(err)
 	}
-	if output != "hello world" || output2 != "hello world" {
-		t.Errorf("TestMultiContext expected %q got %q", "hello world", output)
+	if output != TestString || output2 != "hello world" {
+		t.Errorf("TestMultiContext expected %q got %q", TestString, output)
 	}
 }
 
@@ -603,7 +668,7 @@ func TestLambdaError(t *testing.T) {
 	templ := `stop_at_error.{{#lambda}}{{/lambda}}.never_here`
 	data := make(map[string]any)
 	data["lambda"] = func(text string, render RenderFn) (string, error) {
-		return "", fmt.Errorf("test err")
+		return "", errors.New("test err")
 	}
 	tmpl, err := New().CompileString(templ)
 	if err != nil {
@@ -617,10 +682,10 @@ func TestLambdaError(t *testing.T) {
 }
 
 var malformed = []Test{
-	{`{{#a}}{{}}{{/a}}`, Data{true, "hello"}, "", fmt.Errorf("line 1: empty tag")},
-	{`{{}}`, nil, "", fmt.Errorf("line 1: empty tag")},
-	{`{{}`, nil, "", fmt.Errorf("line 1: unmatched open tag")},
-	{`{{`, nil, "", fmt.Errorf("line 1: unmatched open tag")},
+	{`{{#a}}{{}}{{/a}}`, Data{true, "hello"}, "", errors.New("line 1: empty tag")},
+	{`{{}}`, nil, "", errors.New("line 1: empty tag")},
+	{`{{}`, nil, "", errors.New("line 1: unmatched open tag")},
+	{`{{`, nil, "", errors.New("line 1: unmatched open tag")},
 	// invalid syntax - https://github.com/hoisie/mustache/issues/10
 	{`{{#a}}{{#b}}{{/a}}{{/b}}}`, map[string]any{}, "", fmt.Errorf("line 1: interleaved closing tag: a")},
 }

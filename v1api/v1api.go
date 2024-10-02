@@ -3,6 +3,7 @@
 package v1api
 
 import (
+	"fmt"
 	"os"
 	"path"
 
@@ -22,7 +23,7 @@ func ParseString(data string) (*mustache.Template, error) {
 func ParseStringRaw(data string, forceRaw bool) (*mustache.Template, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("couldn't parse string: %w", err)
 	}
 	partials := &mustache.FileProvider{
 		Paths: []string{cwd},

@@ -140,6 +140,9 @@ rules are used. To do this, use `.WithEscapeMode(mustache.JSON)` to set the esca
 JSON escaping rules are different from the rules used by Go's text/template.JSEscape, and do not guarantee that the JSON
 will be safe to include as part of an HTML page. In JSON mode, references to objects and slices in the template will be rendered to JSON objects and arrays.
 
+In JSON mode, slices/arrays and maps will be rendered as JSON arrays and objects (respectively). This behavior can be
+customized by setting a JSON value rendering function using `WithJSONMarshalFn`.
+
 A third mode of `mustache.Raw` allows the use of Mustache templates to generate plain text, such as e-mail messages and
 console application help text.
 
