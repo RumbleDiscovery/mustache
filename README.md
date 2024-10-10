@@ -1,8 +1,7 @@
 # Mustache template engine for Go
 
-[![Go Doc](https://pkg.go.dev/badge/github.com/runZeroInc/mustache)](https://pkg.go.dev/github.com/runZeroInc/mustache)
-[![Go Report Card](https://goreportcard.com/badge/github.com/runZeroInc/mustache)](https://goreportcard.com/report/github.com/runZeroInc/mustache)
-[![codecov](https://codecov.io/gh/runZeroInc/mustache/branch/main/graph/badge.svg?token=S4xOabgqR8)](https://codecov.io/gh/runZeroInc/mustache)
+[![Go Doc](https://pkg.go.dev/badge/github.com/runZeroInc/mustache/v2)](https://pkg.go.dev/github.com/runZeroInc/mustache/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/runZeroInc/mustache/v2)](https://goreportcard.com/report/github.com/runZeroInc/mustache/v2)
 
 <img src="images/logo.jpeg" alt="logo" width="100"/>
 
