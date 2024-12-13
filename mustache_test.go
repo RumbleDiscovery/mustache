@@ -509,6 +509,15 @@ func TestRenderJSON(t *testing.T) {
 			},
 			Result: `[4,5,6]`,
 		},
+		{
+			Template: `{{#array}}{{.}} {{/array}}`,
+			Data: map[string]any{
+				"array": []string{
+					"a", "\"b\"", "c",
+				},
+			},
+			Result: `a \"b\" c `,
+		},
 	}
 	for _, tst := range tests {
 		tmpl, err := New().WithEscapeMode(EscapeJSON).CompileString(tst.Template)
@@ -562,8 +571,8 @@ func TestJSONMarshal(t *testing.T) {
 			Output: `[1,2,3]`,
 		},
 		{
-			Input:  map[string]any{"a": "alpha", "b": "beta", "x": 12, "y": 9.4},
-			Output: `{"a":"alpha","b":"beta","x":12,"y":9.4}`,
+			Input:  map[string]any{"a": `"alpha"`, "b": "beta", "x": 12, "y": 9.4},
+			Output: `{"a":"\"alpha\"","b":"beta","x":12,"y":9.4}`,
 		},
 		{
 			Input:  3,
